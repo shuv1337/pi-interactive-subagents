@@ -418,6 +418,28 @@ The `cwd` is resolved relative to the project root (or used as-is if absolute). 
 
 ---
 
+## Tools Widget
+
+Every sub-agent session displays a compact tools widget above the editor, showing available and denied tools at a glance. This makes it immediately clear what capabilities each agent has.
+
+- **Collapsed** (default): one-line summary — tool count + denied count
+- **Expanded** (`Ctrl+J`): full list of all tools and denied tools
+- Press `Ctrl+J` again to collapse
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Subagent Tools — 12 tools · 4 denied  (Ctrl+J)     │  ← collapsed
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│ Subagent Tools — 12 available  (Ctrl+J to collapse) │  ← expanded
+│ read, bash, edit, write, todo, ...                  │
+│ denied: subagent, parallel_subagents, ...           │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Requirements
 
 - [pi](https://github.com/badlogic/pi-mono) - the coding agent
