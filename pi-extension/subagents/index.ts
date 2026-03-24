@@ -238,7 +238,7 @@ interface RunningSubagent {
   sessionDir: string;
   existingSessionFiles: Set<string>;
   trackedSessionFile?: string;
-  claimedFiles?: Set<string>;
+
   entries?: number;
   bytes?: number;
   forkCleanupFile?: string;
@@ -247,6 +247,9 @@ interface RunningSubagent {
 
 /** All currently running subagents, keyed by id. */
 const runningSubagents = new Map<string, RunningSubagent>();
+
+/** Shared across all concurrent watchers to prevent multiple agents claiming the same session file. */
+const globalClaimedFiles = new Set<string>();
 
 // ── Widget management ──
 
@@ -367,7 +370,7 @@ function startWidgetRefresh() {
 async function launchSubagent(
   params: typeof SubagentParams.static,
   ctx: { sessionManager: { getSessionFile(): string | null; getSessionId(): string }; cwd: string },
-  options?: { surface?: string; claimedFiles?: Set<string> },
+  options?: { surface?: string },
 ): Promise<RunningSubagent> {
   const startTime = Date.now();
   const id = Math.random().toString(16).slice(2, 10);
@@ -385,6 +388,9 @@ async function launchSubagent(
   const existingSessionFiles = new Set(
     readdirSync(sessionDir).filter((f) => f.endsWith(".jsonl"))
   );
+
+  // Mark existing files as claimed so no watcher picks them up
+  for (const f of existingSessionFiles) globalClaimedFiles.add(f);
 
   // Use pre-created surface (parallel mode) or create a new one.
   // For new surfaces, pause briefly so the shell is ready before sending the command.
@@ -517,7 +523,6 @@ async function launchSubagent(
     startTime,
     sessionDir,
     existingSessionFiles,
-    claimedFiles: options?.claimedFiles,
     forkCleanupFile,
   };
 
@@ -541,7 +546,6 @@ async function watchSubagent(
   // In parallel mode, multiple agents share the same session directory.
   // Without tracking, they'd all pick the "newest" file (same one).
   let trackedFile = running.trackedSessionFile ?? null;
-  const claimedFiles = running.claimedFiles;
 
   try {
     const exitCode = await pollForExit(surface, signal, {
@@ -550,15 +554,13 @@ async function watchSubagent(
         const elapsed = formatElapsed(Math.floor((Date.now() - startTime) / 1000));
         const progress = measureSessionProgress(
           sessionDir, existingSessionFiles,
-          trackedFile, claimedFiles,
+          trackedFile, globalClaimedFiles,
         );
         if (progress && !trackedFile) {
           // Lock onto this file and claim it so other parallel agents skip it
           trackedFile = progress.file;
           running.trackedSessionFile = progress.file;
-          if (claimedFiles) {
-            claimedFiles.add(basename(progress.file));
-          }
+          globalClaimedFiles.add(basename(progress.file));
         }
         // Update entries/bytes for widget display
         if (progress) {
@@ -653,6 +655,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       agent.abortController?.abort();
     }
     runningSubagents.clear();
+    globalClaimedFiles.clear();
   });
 
   // Tools denied via PI_DENY_TOOLS env var (set by parent agent based on frontmatter)
